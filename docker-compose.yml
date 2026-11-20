@@ -1,0 +1,23 @@
+services:
+  n8n:
+    image: n8nio/n8n
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      GENERIC_TIMEZONE: America/Sao_Paulo
+      TZ: America/Sao_Paulo
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      # If an antivirus or corporate proxy intercepts HTTPS, export its root
+      # certificate as PEM into ./certs and uncomment this line:
+      # NODE_EXTRA_CA_CERTS: /opt/custom-certificates/root.pem
+    volumes:
+      - n8n_data:/home/node/.n8n
+      # - ./certs:/opt/custom-certificates:ro
+    extra_hosts:
+      # Lets the workflow reach an API running on your machine (Linux needs this line)
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  n8n_data:

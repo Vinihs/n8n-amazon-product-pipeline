@@ -1,0 +1,166 @@
+{
+  "name": "Amazon → App product pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {}
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "daily-schedule",
+      "name": "Daily schedule"
+    },
+    {
+      "parameters": {
+        "url": "https://www.amazon.com.br/blackfriday",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "fetch-amazon-page",
+      "name": "Fetch Amazon page"
+    },
+    {
+      "parameters": {
+        "operation": "extractHtmlContent",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "name",
+              "cssSelector": ".dcl-product-label",
+              "returnArray": true
+            },
+            {
+              "key": "price",
+              "cssSelector": ".a-price-whole",
+              "returnArray": true
+            },
+            {
+              "key": "url",
+              "cssSelector": ".dcl-product-link",
+              "returnValue": "attribute",
+              "attribute": "href",
+              "returnArray": true
+            },
+            {
+              "key": "image",
+              "cssSelector": ".dcl-dynamic-image",
+              "returnValue": "attribute",
+              "attribute": "src",
+              "returnArray": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "extract-product-fields",
+      "name": "Extract product fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.all()[0].json;\nconst BASE = 'https://www.amazon.com.br';\n\n// Turn \"/x/dp/ABC\", \"//host/x\" or \"http://...\" into a full https URL\nconst toHttps = (u) => {\n  u = String(u ?? '').trim();\n  if (!u) return '';\n  if (u.startsWith('//')) return 'https:' + u;\n  if (u.startsWith('/')) return BASE + u;\n  return u.replace(/^http:\\/\\//i, 'https://');\n};\n\n// Clean Amazon link: https://www.amazon.com.br/dp/8535947183\nconst productLink = (u) => {\n  const m = String(u ?? '').match(/\\/dp\\/([A-Z0-9]{10})/i);\n  return m ? `${BASE}/dp/${m[1]}` : toHttps(u);\n};\n\nreturn data.name\n  .map((name, i) => ({\n    name: String(name).trim(),\n    imageUrl: toHttps(data.image[i]),\n    externalLink: productLink(data.url[i]),\n  }))\n  .filter(p => p.name && p.imageUrl.startsWith('https://') && p.externalLink.startsWith('https://'))\n  .map(p => ({ json: p }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "clean-normalize",
+      "name": "Clean & normalize"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3000/api/v1/products",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  name: $json.name,\n  imageUrl: $json.imageUrl,\n  externalLink: $json.externalLink\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        864,
+        0
+      ],
+      "id": "post-to-app-api",
+      "name": "POST to app API"
+    }
+  ],
+  "connections": {
+    "Daily schedule": {
+      "main": [
+        [
+          {
+            "node": "Fetch Amazon page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Amazon page": {
+      "main": [
+        [
+          {
+            "node": "Extract product fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract product fields": {
+      "main": [
+        [
+          {
+            "node": "Clean & normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean & normalize": {
+      "main": [
+        [
+          {
+            "node": "POST to app API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
